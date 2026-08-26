@@ -159,10 +159,10 @@
 				},
 			});
 
-			const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":5461084,"index.wasm":38820072},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+			const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":5461852,"index.wasm":38820072},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 			const GODOT_THREADS_ENABLED = true;
 			const engine = new Engine(GODOT_CONFIG);
-			(function () {
+			(async function () {
 				const statusOverlay = document.getElementById('status');
 				const statusProgress = document.getElementById('status-progress');
 				const statusNotice = document.getElementById('status-notice');
@@ -188,6 +188,90 @@
 					setStatusMode('notice');
 					initializing = false;
 				}
+				function reloadWithRuntimeNonce() {
+					const url = new URL(window.location.href);
+					url.searchParams.set('runtime', Date.now().toString(36));
+					window.location.replace(url.toString());
+				}
+				function waitForWorkerState(worker, targetStates, timeoutMs) {
+					if (worker == null || targetStates.includes(worker.state)) return Promise.resolve();
+					return Promise.race([
+						new Promise((resolve) => {
+							worker.addEventListener('statechange', () => {
+								if (targetStates.includes(worker.state)) resolve();
+							});
+						}),
+						new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+					]);
+				}
+				async function activatePendingRuntimeUpdate() {
+					if (!GODOT_CONFIG.serviceWorker || !('serviceWorker' in navigator)) return false;
+					let registration = await Promise.race([
+						navigator.serviceWorker.getRegistration(),
+						new Promise((resolve) => setTimeout(() => resolve(null), 2000)),
+					]);
+					// The first isolated launch is handled by the feature bootstrap below.
+					if (registration == null || !navigator.serviceWorker.controller) return false;
+					let discoveredWorker = null;
+					registration.addEventListener('updatefound', () => {
+						discoveredWorker = registration.installing;
+					}, {once: true});
+					const refreshedRegistration = await Promise.race([
+						navigator.serviceWorker.register(GODOT_CONFIG.serviceWorker, {updateViaCache: 'none'}).catch((error) => {
+							console.warn('Editor runtime update check failed; continuing with the current runtime.', error);
+							return null;
+						}),
+						new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+					]);
+					if (refreshedRegistration == null) {
+						return false;
+					}
+					registration = refreshedRegistration;
+					let worker = registration.waiting || registration.installing || discoveredWorker;
+					// register() may return an unchanged registration without running the
+					// Service Worker Update algorithm when the URL/options already match.
+					// Explicitly update so every GitHub Pages deployment is checked, not
+					// only the first migration to updateViaCache: 'none'.
+					if (worker == null || worker === registration.active) {
+						registration.addEventListener('updatefound', () => {
+							discoveredWorker = registration.installing;
+						}, {once: true});
+						await Promise.race([
+							registration.update().catch((error) => {
+								console.warn('Explicit editor runtime update check failed; continuing with the current runtime.', error);
+							}),
+							new Promise((resolve) => setTimeout(resolve, 3000)),
+						]);
+						worker = registration.waiting || registration.installing || discoveredWorker;
+					}
+					if (worker == null || worker === registration.active) return false;
+					await waitForWorkerState(worker, ['installed', 'activated', 'redundant'], 5000);
+					worker = registration.waiting || worker;
+					if (!['installed', 'activated'].includes(worker.state)) return false;
+					setStatusMode('progress');
+					statusLabel.textContent = 'UPDATING EDITOR RUNTIME';
+					let controllerChanged = false;
+					const controlChanged = new Promise((resolve) => {
+						navigator.serviceWorker.addEventListener('controllerchange', () => {
+							controllerChanged = true;
+							resolve();
+						}, {once: true});
+					});
+					try {
+						worker.postMessage('claim');
+					} catch (error) {
+						console.warn('The pending editor runtime could not be activated; continuing with the current runtime.', error);
+						return false;
+					}
+					await Promise.race([controlChanged, new Promise((resolve) => setTimeout(resolve, 3500))]);
+					if (!controllerChanged && worker.state !== 'activated' && registration.active !== worker) {
+						console.warn('The new editor runtime is installed and will activate after other editor tabs close.');
+						return false;
+					}
+					reloadWithRuntimeNonce();
+					return true;
+				}
+				if (await activatePendingRuntimeUpdate()) return;
 				const missing = Engine.getMissingFeatures({threads: GODOT_THREADS_ENABLED});
 				if (missing.length) {
 					if (GODOT_CONFIG.serviceWorker && GODOT_CONFIG.ensureCrossOriginIsolationHeaders && 'serviceWorker' in navigator) {
@@ -206,12 +290,12 @@
 								await registration.update();
 							}
 							const readyRegistration = await navigator.serviceWorker.ready;
-							const worker = readyRegistration.active || registration.active || registration.waiting || registration.installing;
+							const worker = registration.waiting || registration.installing || readyRegistration.active || registration.active;
 							if (worker != null) worker.postMessage('claim');
 							if (!navigator.serviceWorker.controller) {
 								await Promise.race([controlChanged, new Promise((resolve) => setTimeout(resolve, 3000))]);
 							}
-							window.location.reload();
+							reloadWithRuntimeNonce();
 						}).catch(displayFailureNotice);
 					} else {
 						displayFailureNotice('This browser is missing required WebAssembly/WebGL features: ' + missing.join(', '));
@@ -230,7 +314,16 @@
 						}
 					},
 				}).then(() => setStatusMode('hidden'), displayFailureNotice);
-			}());
+			}()).catch((error) => {
+				console.error(error);
+				const overlay = document.getElementById('status');
+				const notice = document.getElementById('status-notice');
+				const label = document.getElementById('status-label');
+				overlay.style.visibility = 'visible';
+				notice.style.display = 'block';
+				notice.textContent = error instanceof Error ? error.message : String(error || 'An unknown error occurred.');
+				label.textContent = 'EDITOR COULD NOT START';
+			});
 		</script>
 	</body>
 </html>

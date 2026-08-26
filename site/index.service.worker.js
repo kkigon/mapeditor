@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1787740711|1384770';
+const CACHE_VERSION = '1787742811|1568428';
 /** @type {string} */
 const CACHE_PREFIX = 'AREA//BEAT-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;

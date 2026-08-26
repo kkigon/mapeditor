@@ -190,7 +190,27 @@
 				}
 				const missing = Engine.getMissingFeatures({threads: GODOT_THREADS_ENABLED});
 				if (missing.length) {
-					displayFailureNotice('This browser is missing required WebAssembly/WebGL features: ' + missing.join(', '));
+					if (GODOT_CONFIG.serviceWorker && GODOT_CONFIG.ensureCrossOriginIsolationHeaders && 'serviceWorker' in navigator) {
+						setStatusMode('progress');
+						statusLabel.textContent = 'PREPARING SECURE AUDIO RUNTIME';
+						let registrationPromise;
+						try {
+							registrationPromise = navigator.serviceWorker.getRegistration();
+						} catch (error) {
+							registrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+						}
+						Promise.race([
+							registrationPromise.then((registration) => {
+								if (registration != null) {
+									return Promise.reject(new Error('The isolation service worker is installed but not controlling this page. Clear this site\'s cached data and reload.'));
+								}
+								return engine.installServiceWorker();
+							}),
+							new Promise((resolve) => setTimeout(resolve, 2000)),
+						]).then(() => window.location.reload()).catch(displayFailureNotice);
+					} else {
+						displayFailureNotice('This browser is missing required WebAssembly/WebGL features: ' + missing.join(', '));
+					}
 					return;
 				}
 				setStatusMode('progress');

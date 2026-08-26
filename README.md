@@ -16,7 +16,7 @@ only the generated files under `site/`, the Pages workflow, documentation, and
 licence notices. Do not commit songs, charts, covers, backend code, Cloudflare
 configuration, credentials, or the private source repository's Git history.
 
-Current artifact source revision: `0f433431497b362437dd36716fbd0c917a3b67a0`
+Current artifact source revision: `e0327c31cde8fddc8dac7fb05bac13de85f2c199`
 
 GitHub Pages is public. Sharing this URL only with the development team is not
 access control, so unreleased or unlicensed media must remain local.

@@ -193,21 +193,26 @@
 					if (GODOT_CONFIG.serviceWorker && GODOT_CONFIG.ensureCrossOriginIsolationHeaders && 'serviceWorker' in navigator) {
 						setStatusMode('progress');
 						statusLabel.textContent = 'PREPARING SECURE AUDIO RUNTIME';
-						let registrationPromise;
-						try {
-							registrationPromise = navigator.serviceWorker.getRegistration();
-						} catch (error) {
-							registrationPromise = Promise.reject(new Error('Service worker registration failed.'));
-						}
+						const controlChanged = new Promise((resolve) => {
+							navigator.serviceWorker.addEventListener('controllerchange', resolve, {once: true});
+						});
 						Promise.race([
-							registrationPromise.then((registration) => {
-								if (registration != null) {
-									return Promise.reject(new Error('The isolation service worker is installed but not controlling this page. Clear this site\'s cached data and reload.'));
-								}
-								return engine.installServiceWorker();
-							}),
-							new Promise((resolve) => setTimeout(resolve, 2000)),
-						]).then(() => window.location.reload()).catch(displayFailureNotice);
+							navigator.serviceWorker.getRegistration(),
+							new Promise((resolve) => setTimeout(() => resolve(null), 2000)),
+						]).then(async (registration) => {
+							if (registration == null) {
+								registration = await engine.installServiceWorker();
+							} else {
+								await registration.update();
+							}
+							const readyRegistration = await navigator.serviceWorker.ready;
+							const worker = readyRegistration.active || registration.active || registration.waiting || registration.installing;
+							if (worker != null) worker.postMessage('claim');
+							if (!navigator.serviceWorker.controller) {
+								await Promise.race([controlChanged, new Promise((resolve) => setTimeout(resolve, 3000))]);
+							}
+							window.location.reload();
+						}).catch(displayFailureNotice);
 					} else {
 						displayFailureNotice('This browser is missing required WebAssembly/WebGL features: ' + missing.join(', '));
 					}

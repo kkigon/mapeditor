@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<meta name="theme-color" content="#070a11">
+		<title>AREA//BEAT CHART LAB</title>
+		<style>
+			:root {
+				color-scheme: dark;
+				font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+				background: #070a11;
+			}
+			html, body, #canvas {
+				width: 100%;
+				height: 100%;
+				margin: 0;
+				padding: 0;
+				border: 0;
+			}
+			body {
+				color: #f4f6fa;
+				background:
+					radial-gradient(circle at 16% 8%, rgba(85, 207, 225, .14), transparent 34rem),
+					radial-gradient(circle at 86% 92%, rgba(181, 140, 255, .12), transparent 36rem),
+					#070a11;
+				overflow: hidden;
+				touch-action: none;
+			}
+			#canvas {
+				display: block;
+				position: relative;
+				z-index: 1;
+			}
+			#canvas:focus { outline: none; }
+			#status {
+				position: fixed;
+				inset: 0;
+				z-index: 10;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				background: rgba(7, 10, 17, .97);
+				visibility: hidden;
+			}
+			#status-card {
+				width: min(520px, calc(100vw - 48px));
+				padding: 42px 44px 36px;
+				box-sizing: border-box;
+				border: 1px solid rgba(255,255,255,.10);
+				background: linear-gradient(145deg, rgba(29,35,46,.95), rgba(12,15,23,.97));
+				box-shadow: 0 26px 90px rgba(0,0,0,.46), inset 3px 0 #55cfe1;
+			}
+			#brand-kicker {
+				color: #55cfe1;
+				font-size: 11px;
+				font-weight: 700;
+				letter-spacing: .24em;
+				text-transform: uppercase;
+			}
+			#brand-title {
+				margin: 8px 0 4px;
+				font-size: clamp(34px, 7vw, 54px);
+				font-weight: 300;
+				letter-spacing: -.05em;
+			}
+			#brand-subtitle {
+				margin-bottom: 30px;
+				color: #a2aab8;
+				font-size: 12px;
+				letter-spacing: .12em;
+			}
+			#status-progress {
+				display: none;
+				width: 100%;
+				height: 3px;
+				border: 0;
+				background: rgba(255,255,255,.08);
+				accent-color: #55cfe1;
+			}
+			#status-progress::-webkit-progress-bar { background: rgba(255,255,255,.08); }
+			#status-progress::-webkit-progress-value { background: linear-gradient(90deg, #55cfe1, #b58cff); }
+			#status-progress::-moz-progress-bar { background: linear-gradient(90deg, #55cfe1, #b58cff); }
+			#status-label {
+				margin-top: 14px;
+				color: #707887;
+				font-size: 10px;
+				letter-spacing: .16em;
+				text-transform: uppercase;
+			}
+			#status-notice {
+				display: none;
+				margin-top: 20px;
+				padding: 16px;
+				border: 1px solid rgba(255,104,123,.42);
+				background: rgba(111,48,60,.28);
+				font-size: 13px;
+				line-height: 1.55;
+			}
+			#status-splash { display: none; }
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+
+	</head>
+	<body>
+		<canvas id="canvas">Your browser does not support the canvas tag.</canvas>
+		<noscript>JavaScript is required to run AREA//BEAT CHART LAB.</noscript>
+		<div id="status">
+			<div id="status-card">
+				<div id="brand-kicker">AREA LAB / DEVELOPER TOOL</div>
+				<div id="brand-title">CHART LAB</div>
+				<div id="brand-subtitle">FOUR-ZONE AUTHORING / LOCAL FILES STAY IN YOUR BROWSER</div>
+				<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="index.png" alt="">
+				<progress id="status-progress"></progress>
+				<div id="status-label">LOADING EDITOR RUNTIME</div>
+				<div id="status-notice"></div>
+			</div>
+		</div>
+		<script src="index.js"></script>
+		<script>
+			/*
+			 * Godot's Web FileDialog cannot browse the host filesystem. This tiny,
+			 * user-gesture-driven bridge hands a selected TXT/MP3 to GDScript as a
+			 * base64 data URL. The editor writes it into user:// before parsing.
+			 */
+			window.AreaBeatEditor = Object.freeze({
+				pickFile(kind, callback) {
+					const input = document.createElement('input');
+					input.type = 'file';
+					input.accept = kind === 'audio' ? '.mp3,audio/mpeg,audio/mp3' : '.txt,text/plain';
+					input.style.display = 'none';
+					document.body.appendChild(input);
+					const finish = () => input.remove();
+					input.addEventListener('change', () => {
+						const file = input.files && input.files[0];
+						if (!file) {
+							finish();
+							return;
+						}
+						if (file.size > 96 * 1024 * 1024) {
+							callback('', '', 'Files larger than 96 MiB are not supported.');
+							finish();
+							return;
+						}
+						const reader = new FileReader();
+						reader.addEventListener('load', () => {
+							callback(file.name, String(reader.result || ''), '');
+							finish();
+						});
+						reader.addEventListener('error', () => {
+							callback('', '', 'The selected file could not be read.');
+							finish();
+						});
+						reader.readAsDataURL(file);
+					}, {once: true});
+					input.click();
+				},
+			});
+
+			const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":5450268,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+			const GODOT_THREADS_ENABLED = false;
+			const engine = new Engine(GODOT_CONFIG);
+			(function () {
+				const statusOverlay = document.getElementById('status');
+				const statusProgress = document.getElementById('status-progress');
+				const statusNotice = document.getElementById('status-notice');
+				const statusLabel = document.getElementById('status-label');
+				let initializing = true;
+				let statusMode = '';
+				function setStatusMode(mode) {
+					if (statusMode === mode || !initializing) return;
+					if (mode === 'hidden') {
+						statusOverlay.animate([{opacity: 1}, {opacity: 0}], {duration: 360, easing: 'ease-out'}).finished.then(() => statusOverlay.remove());
+						initializing = false;
+						return;
+					}
+					statusOverlay.style.visibility = 'visible';
+					statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+					statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+					statusLabel.textContent = mode === 'notice' ? 'EDITOR COULD NOT START' : 'LOADING EDITOR RUNTIME';
+					statusMode = mode;
+				}
+				function displayFailureNotice(error) {
+					console.error(error);
+					statusNotice.textContent = error instanceof Error ? error.message : String(error || 'An unknown error occurred.');
+					setStatusMode('notice');
+					initializing = false;
+				}
+				const missing = Engine.getMissingFeatures({threads: GODOT_THREADS_ENABLED});
+				if (missing.length) {
+					displayFailureNotice('This browser is missing required WebAssembly/WebGL features: ' + missing.join(', '));
+					return;
+				}
+				setStatusMode('progress');
+				engine.startGame({
+					onProgress(current, total) {
+						if (current > 0 && total > 0) {
+							statusProgress.value = current;
+							statusProgress.max = total;
+						} else {
+							statusProgress.removeAttribute('value');
+							statusProgress.removeAttribute('max');
+						}
+					},
+				}).then(() => setStatusMode('hidden'), displayFailureNotice);
+			}());
+		</script>
+	</body>
+</html>
+
